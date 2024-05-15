@@ -1,5 +1,6 @@
 import logging
 import logging.config
+import signal
 
 # Get logging configurations
 logging.config.fileConfig('logging.conf')
@@ -25,26 +26,43 @@ class Bot(Client):
             workers=50,
             plugins={"root": "plugins"},
             sleep_threshold=5,
+            parse_mode="html"  # Adding this line
         )
 
     async def start(self):
-        b_users, b_chats = await db.get_banned()
-        temp.BANNED_USERS = b_users
-        temp.BANNED_CHATS = b_chats
-        await super().start()
-        await Media.ensure_indexes()
-        me = await self.get_me()
-        temp.ME = me.id
-        temp.U_NAME = me.username
-        temp.B_NAME = me.first_name
-        self.username = '@' + me.username
-        logging.info(f"{me.first_name} with for Pyrogram v{__version__} (Layer {layer}) started on {me.username}.")
-        logging.info(LOG_STR)
+        try:
+            b_users, b_chats = await db.get_banned()
+            temp.BANNED_USERS = b_users
+            temp.BANNED_CHATS = b_chats
+            await super().start()
+            await Media.ensure_indexes()
+            me = await self.get_me()
+            temp.ME = me.id
+            temp.U_NAME = me.username
+            temp.B_NAME = me.first_name
+            self.username = '@' + me.username
+            logging.info(f"{me.first_name} with for Pyrogram v{__version__} (Layer {layer}) started on {me.username}.")
+            logging.info(LOG_STR)
+        except Exception as e:
+            logging.exception("Error starting bot: %s", e)
 
     async def stop(self, *args):
-        await super().stop()
-        logging.info("Bot stopped. Bye.")
+        try:
+            await super().stop()
+            logging.info("Bot stopped. Bye.")
+        except Exception as e:
+            logging.exception("Error stopping bot: %s", e)
 
 
 app = Bot()
+
+# Graceful exit
+def stop_bot(signum, frame):
+    logging.info("Received signal to stop bot. Exiting...")
+    app.stop()
+    exit(0)
+
+signal.signal(signal.SIGINT, stop_bot)
+signal.signal(signal.SIGTERM, stop_bot)
+
 app.run()
